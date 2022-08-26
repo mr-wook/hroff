@@ -11,7 +11,7 @@ hroff takes an exceedingly simple runoff (troff, etc.) style input and outputs H
 !<hroff-directive> <args> -- include <file>, css <file> [inline], js <file> [inline]
 .<section type> <string> -- start a section, ie: <p>, <div>, etc.;
 ..<section type> -- end a section, ie: </p>, </div>
-#<emitter html comment> <text>
+#<emitted html comment> <text>
 ~~~
 
 Normally, the doctype, head, body, and html sections are emitted.
