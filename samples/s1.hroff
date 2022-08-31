@@ -1,0 +1,38 @@
+;; -*- Runoff -*-
+; Prototype HROFF Sample
+.title HROFF Sample 01
+.css s1.css
+.p Intro Paragraph
+; ..p -- causes premature exit
+.h1 Random Header
+.table width="25%" border=1
+.caption Simple table
+.tr
+.th First // Second // Third // 4th
+..tr
+.tr foo // bar // arple // snarf
+..table
+
+.br
+.br
+.div
+.table width="40%"
+.caption Multiline Table
+.tr
+.td First
+.td Second
+.td Third
+.td Fourth
+..tr
+.tr
+.td a // b // c // d
+..tr
+..table
+..div
+.br
+.br
+.p Some random paragraph of test, er, uh, I mean text...
+..p
+
+.select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3
+
