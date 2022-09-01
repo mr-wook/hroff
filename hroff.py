@@ -14,6 +14,8 @@ if True:
 
 
 class Components(dict):
+    CAN_RENDER = [ 'directive', 'end', 'directive', 'hroff comment', 'html comment', 'test-start', 'text' ]
+    EXTENDED_RENDER = dict(select='option')
     PREFACES = [ ';', '.', '#', '!', ',' ]
     PARENT_PARTS = re.compile(r'\s*::\s*')
     SLASHED = re.compile(r'\s*//\s*')
@@ -36,15 +38,13 @@ class Components(dict):
         atoms = self['atoms'] = Components.WORDS.split(ln)
         a0 = atoms[0]
 
-        if a0.startswith('..'):
-            self['type'] = 'end'
-            self['name'] = atoms[0][2:]
-            self['args'] = atoms[1:]
-
         if a0.startswith('.'):
             self['type'] = 'start'
             self['name'] = atoms[0][1:]
             self['args'] = atoms[1:]
+        if a0.startswith('..'):
+            self['type'] = 'end'
+            self['name'] = atoms[0][2:]
 
         if '//' in atoms:
             fields = self['fields'] = Components.SLASHED.split(ln)
@@ -77,23 +77,47 @@ class Components(dict):
         return
 
     def parse_subterms(self) -> None:
-        parent, kids = Components.PARENT_PARTS.split(self.argString, 1)
-        parent = dict(base=parent)
-        parent['opts'] = " ".join([word for word in Components.WORDS.split(parent['base']) if '=' in word])
-        if not '//' in kids:
-            return # ?
-        parent['children'] = [ ]
-        kids = Components.SLASHED.split(kids)
-        for kid in kids:
-            child = dict(base=kid)
-            if '::' in kid:
-                child['opts'], child['args'] = Components.PARENT_PARTS.split(kid, 1)
-            else:
-                child['opts'], child['args'] = "", kid
-            parent['children'].append(child)
-        self['subterms'] = parent
-        # pprint(parent)
+        args = self.args
+        self['subterms'] = dict(base=args, opts="", children=[])
+
+        # Handle baseline expressions;
+        if ( "::" not in args) and ( "//" not in args ): # Does this handle case of non-fields but args for top level?
+            return
+        elif "::" in args:
+            parent_base, kid_base = Components.PARENT_PARTS.split(self.argString, 1)
+            opts = " ".join([word for word in Components.WORDS.split(parent_base) if '=' in word])
+            self['subterms'] = dict(base=parent_base, opts=opts)
+            children = [ ]
+            kids = Components.SLASHED.split(kid_base)
+            # kid is a string, child is a dict;
+            for kid in kids:
+                if "::" in kid:
+                    child_opt_str, child_arg_str = Components.PARENT_PARTS.split(kid, 1)
+                else:
+                    child_opt_str, child_arg_str = "", kid
+                children.append(dict(base=kid, opts=child_opt_str, args=child_arg_str))
+            self['subterms']['children'] = children
+            # Evil bit here: Should remove opts from args and '::'
+            sep = self['args'].index('::') + 1
+            self['args'] = self['args'][sep:]
+            return
+        else:
+            # Need to add children[0] args?
+            return
         return
+
+    def render_nested(self, outer_tag: AnyStr) -> List:
+        if outer_tag not in Components.EXTENDED_RENDER:
+            return [ ] 
+        inner_tag = Components.EXTENDED_RENDER[outer_tag]
+        olist = [ ]
+        self.parse_subterms() # parse_subterms needs to return an always-valid data structure; ****
+        subterms = self['subterms']
+        olist.append(f"<{outer_tag} {subterms['opts']}>")
+        for child in subterms['children']:
+            olist.append(f"<{inner_tag} {child['opts']}>{child['args']}</{inner_tag}>")
+        olist.append(f"</{outer_tag}>")
+        return olist
 
     @property
     def args(self) -> List:
@@ -107,6 +131,10 @@ class Components(dict):
     def atoms(self) -> List:
         return self.get('atoms', None)
 
+    @property
+    def end(self):
+        return f"</{self.name}>"
+    
     @property
     def fields(self) -> List:
         return self.get('fields', None)
@@ -130,6 +158,36 @@ class Components(dict):
         return options
 
     @property
+    def render(self) -> AnyStr:
+        """Simple Renderer for simple cases"""
+        # In over 35 years of OOP, I have never written this function (render), which has appeared as a contrived
+        # example in so many texts (even though I'm writing it as a property);
+        # Replace the following with match once we are using >=3.10;
+        type_ = self.type
+        if type_ == 'directive':
+            return ""
+        if type_ == 'end':
+            return f"</{self.name}>"
+        if type_ == 'hroff comment':
+            return ""
+        if type_ == 'html comment':
+            return f"<!-- {self.line[1:].strip()} -->"
+        if type_ == 'text':
+            return self.line
+        if type_ == 'test':
+            # start_method, *args = self.determine_complexity()
+            # rs = start_method(*args) # ie: render_nested(outer, inner)
+            # return rs
+            if self.name == 'select':
+                return self.render_nested('select')
+            return ""
+        return f"<!-- unsuppored type {type_} -->"
+
+    @property
+    def start(self):
+        return f"<{self.name}>"
+    
+    @property
     def type(self) -> AnyStr:
         return self.get('type', None)
 
@@ -145,14 +203,14 @@ class Components(dict):
 
 class HROFFFile():
     SIMPLE = [ 'table', 'br', 'p', 'div' ]
-    SIMPLE_WRAP = [ 'h1', 'h2', 'h3', 'h4', 'h5', 'caption' ]
+    SIMPLE_WRAP = [ 'caption', 'h1', 'h2', 'h3', 'h4', 'h5', 'lbl' ]
     def __init__(self, fn: str, **kwa: dict) -> None:
         self._fn = fn
         self._header = OrderedDict(title=None, css=[], js=[]) # DO NOT REORDER!
         self._wrapper = [ "<!doctype html>", "</html>" ]
         self._body = [ ]
         self._head = [ ]
-        HROFFFile.GEN_HANDLERS = dict(title=self._gen_title, css=self._gen_css,
+        HROFFFile.GEN_HANDLERS = dict(title=self._gen_title, css=self._gen_css, label=self._gl,
                                       tr=self._gen_row, td=self._gen_row_data, th=self._gen_row_header,
                                       select=self._gen_select)
         # Cheap (temporary?) hack
@@ -203,7 +261,7 @@ class HROFFFile():
         return html
 
     def _end_simple(self, components: dict) -> None:
-        self.append(f"</{components.name}>")
+        self.append(components.start)
 
     def _expand_header(self, k: AnyStr, hdr_dict: Dict) -> AnyStr:
         if k == 'title':
@@ -226,20 +284,15 @@ class HROFFFile():
 
     def _gen_row(self, components: Components) -> None:
         # Sketchy
-        # Support .tr data0 // data1 // data2 // data... (initially)
-        # Next add .tr key=val key=val key=val data0 // data1 // ...
         # Next add .tr key=val key=val key=val \n .td key=val key=val key=val data_string
-        olist = [ "<tr>" ]
+        olist = [ components.start ]
         args = components.get('args', None)
         argString = components.argString
-        # kv_pairs = [arg for arg in args if '=' in arg]
-        # args = [arg for arg in args if '=' not in arg]
-        # data_str = " ".join(args)
         if '//' in argString:
             data_fields = components.fields
             for row_data in data_fields:
                 olist.append(f"    <td>{row_data}</td>")
-            olist.append("</tr>")
+            olist.append(components.end)
         self.append(olist)
         return
 
@@ -250,9 +303,8 @@ class HROFFFile():
         for each in components.fields:
             olist.append(components.withopts)
             olist.append(each)
-        olist.append(f"</{components.name}>")
+        olist.append(components.end)
         self.append(olist)
-
         return
 
     def gen_row_header(self, components: Components) -> None:
@@ -277,8 +329,6 @@ class HROFFFile():
             for field in fields:
                 self.append(f"<{nm}>{field}</{nm}>")
             return
-        # Add support for // in argString
-        # print("components: {components}") ; sys.exit(1)
         self.append(f"<{nm}>{argString}</{nm}>")
 
     def _gen_row_data(self, components: Components) -> None:
@@ -289,55 +339,44 @@ class HROFFFile():
 
     # def _gen_with_subfields(self, outer_nm: AnyStr, inner_nm: AnyStr, components: Components) -> None:
     def _gen_select(self, components: Components) -> None:
-        """ <select name="live_shpp" id="live_shpp_sel">
-              <option value="Baseline">Baseline</option>
-              <option value="1.2">1.2<option>
-              <option value="1.1">1.1</option>
-              <option value="1.0">1</option>
-            </select>
-        .select [key=val key=val] :: [optkey=val optkey=val] str // [optkey=val optkey=val] str // ...
-        """
         components.parse_subterms()
         olist = [ ]
         subterms = components['subterms']
         # pprint(subterms) ; sys.exit(1)
         children = subterms['children']
         opts = subterms['opts'] # nm = components.name; sub_nm (from call params);
-        s = f"<select {opts}>" if opts else "<select>" # use <{nm}>
-        olist.append(s)
+        olist.append(components.withopts)
         for child in children:
             child_opts = child['opts']
             label = child['args']
             s = f'<option value="{child_opts}">{label}</option>' # <{sub_nm}...>{label != None}</{sub_nm}>
             olist.append(s)
-        olist.append("</select>") # </{nm}>
+        olist.append(components.end)
         self.append(olist)
-        # self._add_comment(components.line)
         return
 
     def _gen_simple(self, components: Components) -> None:
         nm, options, argString = components.name, " ".join(components.options), " ".join(components.optionless)
         if options:
             if argString:
-                ostr = f"<{nm} {options}> {argString}"
+                ostr = f"{components.withopts} {argString}"
             else:
-                ostr = f"<{nm} {options}>"
+                ostr = components.withopts
         else:
             if argString:
                 ostr = f"<{nm}> {argString}"
             else:
-                ostr = f"<{nm}>"
+                ostr = components.start
         self.append(ostr)
         return
 
+    def _gl(self, components: Components) -> None:
+        self._gen_simple_wrap(components)
+        return
+
     def _gen_simple_wrap(self, components: Components) -> None:
-        nm = components.name
-        options = components.options
-        s = " ".join(components.optionless)
-        if options:
-            ostr = f"<{nm} {options}>{s}</{nm}>"
-        else:
-            ostr = f"<{nm}>{s}</{nm}>"
+        components.parse_subterms()
+        ostr = f"{components.withopts}{components.argString}{components.end}"
         self.append(ostr)
 
     def _gen_title(self, components: Components) -> None:
@@ -353,29 +392,21 @@ class HROFFFile():
         return ibuf
 
     def run(self) -> None:
+        test_string = "" # '.select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3'
+        if test_string:
+            components = Components(test_string)
+            components['type'] = 'test'
+            print(components.render)
+            sys.exit(1)
         for ln in self._ibuf:
             components = Components(ln)
-            if components.type == 'hroff comment':
+            type_ = components.type
+            if type_ in Components.CAN_RENDER:
+                self.append(components.render)
                 continue
             if components.type == 'start':
                 self._start_segment(components)
                 continue
-            if components.type == 'end':
-                if components.name in HROFFFile.SIMPLE:
-                    self._end_simple(components)
-                    continue
-                self._end_segment(components)
-                continue
-            if components.type == 'html comment':
-                self._add_comment(components.line)
-                continue
-            if components.type == 'directive':
-                self._run_directive(components.line)
-                continue
-            if components.type == 'continuation':
-                self.extend_last(components.args)
-                continue
-            self._body.append(ln)
 
     def save(self, fn = None) -> None:
         if not fn:
