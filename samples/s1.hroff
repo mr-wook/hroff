@@ -3,8 +3,8 @@
 .title HROFF Sample 01
 .css s1.css
 .p Intro Paragraph
-; ..p -- causes premature exit
-.h1 Random Header
+..p -- causes premature exit
+.h1 Pre-Table Header
 .table width="25%" border=1
 .caption Simple table
 .tr
@@ -12,7 +12,8 @@
 ..tr
 .tr foo // bar // arple // snarf
 ..table
-
+End Table?
+..p
 .br
 .br
 .div
@@ -32,7 +33,12 @@
 .br
 .br
 .p Some random paragraph of test, er, uh, I mean text...
+Some more stuff in that paragraph...
+Does this seem random enough to you?
 ..p
+.br
+.br
+.label for="brands" :: Brand Name
 
 .select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3
 
