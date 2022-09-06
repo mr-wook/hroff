@@ -15,14 +15,15 @@ if True:
 
 class Components(dict):
     CAN_RENDER = [ 'directive', 'end', 'directive', 'hroff comment', 'html comment', 'test-start', 'text' ]
-    EXTENDED_RENDER = dict(select='option')
-    PREFACES = [ ';', '.', '#', '!', ',' ]
+    CAN_RENDER_START = [ 'select', 'tdlabel', 'tdselect', 'textarea' ]
+    EXTENDED_RENDER = dict(select='option', tdselect='option')
+    PREFACES = [ ';', '.', '#', '!', ',', '@' ]
     PARENT_PARTS = re.compile(r'\s*::\s*')
     SLASHED = re.compile(r'\s*//\s*')
     UNTYPE = re.compile(r'^(\.[\w+\.]+)\s+(.*)')
     WORDS = re.compile(r'\s+')
 
-    def __init__(self, ln: str):
+    def __init__(self, ln: str, **kwa: dict) -> None:
         self['line'] = ln
         self['type'] = 'text'
         self.parse(ln)
@@ -31,21 +32,25 @@ class Components(dict):
     def atomize(ln: str):
         return WORDS.split(ln)
 
-    def parse(self, ln: AnyStr) -> None:
+    def parse(self, ln: AnyStr, **kwa: dict) -> None:
         """Parse an hroff input line into it's critical components"""
         if not ln:
+            # self.parse_subterms() # Shouldn't need this call for null lines;
             return
         atoms = self['atoms'] = Components.WORDS.split(ln)
         a0 = atoms[0]
+        self['args'] = atoms[1:]
 
         if a0.startswith('.'):
             self['type'] = 'start'
             self['name'] = atoms[0][1:]
-            self['args'] = atoms[1:]
+            # if kwa('forgiving', False):
+            #   if self.name.endswith('>'): self['name'] = self['name'][:-1]
         if a0.startswith('..'):
             self['type'] = 'end'
             self['name'] = atoms[0][2:]
 
+        self.parse_subterms()
         if '//' in atoms:
             fields = self['fields'] = Components.SLASHED.split(ln)
             f0 = fields[0]
@@ -81,6 +86,7 @@ class Components(dict):
         self['subterms'] = dict(base=args, opts="", children=[])
 
         # Handle baseline expressions;
+        # This isn't handling .select v0=k0 v1=k1 :: x // y // z (which should be obvious from if/elif terms);
         if ( "::" not in args) and ( "//" not in args ): # Does this handle case of non-fields but args for top level?
             return
         elif "::" in args:
@@ -111,7 +117,6 @@ class Components(dict):
             return [ ] 
         inner_tag = Components.EXTENDED_RENDER[outer_tag]
         olist = [ ]
-        self.parse_subterms() # parse_subterms needs to return an always-valid data structure; ****
         subterms = self['subterms']
         olist.append(f"<{outer_tag} {subterms['opts']}>")
         for child in subterms['children']:
@@ -174,6 +179,26 @@ class Components(dict):
             return f"<!-- {self.line[1:].strip()} -->"
         if type_ == 'text':
             return self.line
+        if type_ == 'start':
+            nm = self['name']
+            if nm not in Components.CAN_RENDER_START:
+                return f'<!-- not in CAN_RENDER_START: {repr(self)} -->'
+            if nm == 'select':
+                olist = self.render_nested('select')
+                return "\n".join(olist)
+            if nm == 'tdselect':
+                joint = '\n'
+                ostr = '\n'.join(self.render_nested('select'))
+                s = f"<td>{ostr}</td>"
+                return s
+            if nm == 'tdlabel':
+                s = f"<td>{self.withopts}{self.argString}{self.end}</td>"
+                return s
+            if nm == 'textarea':
+                # <textarea id="w3review" name="w3review" rows="4" cols="50">At w3schools.com you will learn how to make a website. They offer free tutorials in all web development technologies.</textarea>
+                s = f'{self.withopts}{self.argString}{self.end}'
+                return s
+
         if type_ == 'test':
             # start_method, *args = self.determine_complexity()
             # rs = start_method(*args) # ie: render_nested(outer, inner)
@@ -203,16 +228,16 @@ class Components(dict):
 
 class HROFFFile():
     SIMPLE = [ 'table', 'br', 'p', 'div' ]
-    SIMPLE_WRAP = [ 'caption', 'h1', 'h2', 'h3', 'h4', 'h5', 'lbl' ]
+    SIMPLE_WRAP = [ 'caption', 'h1', 'h2', 'h3', 'h4', 'h5', 'label' ]
     def __init__(self, fn: str, **kwa: dict) -> None:
         self._fn = fn
+        HROFFFile.GEN_HANDLERS = dict(title=self._gen_title, css=self._gen_css, 
+                                      image=self._gen_image, img=self._gen_img, link=self._gen_link,
+                                      tr=self._gen_row, td=self._gen_row_data, th=self._gen_row_header)
         self._header = OrderedDict(title=None, css=[], js=[]) # DO NOT REORDER!
         self._wrapper = [ "<!doctype html>", "</html>" ]
         self._body = [ ]
         self._head = [ ]
-        HROFFFile.GEN_HANDLERS = dict(title=self._gen_title, css=self._gen_css, label=self._gl,
-                                      tr=self._gen_row, td=self._gen_row_data, th=self._gen_row_header,
-                                      select=self._gen_select)
         # Cheap (temporary?) hack
         self._end_segment = self._end_simple
         rc = self._load(fn)
@@ -282,6 +307,23 @@ class HROFFFile():
         css_entry = components.argString
         self._header['css'].append(css_entry)
 
+    def _gen_image(self, components: Components) -> None:
+        # Generate an image link from: .link <url>, as opposed to <img param=v param=v...> which would be .img
+        url = components.args[-1]
+        preopts = components['subterms'].get('opts', "")
+        self.append(f'<img {preopts} src="{url}"/>')
+
+    def _gen_img(self, components: Components) -> None:
+        components.parse_subterms()
+        html = f'<img {" ".join(components.options)}/>'
+        self.append(html)
+
+    def _gen_link(self, components: Components) -> None:
+        url, *text = components.args # url, text
+        text = " ".join(text)
+        ostr = f'<a href="{url}">{text}</a>'
+        self.append(ostr)
+
     def _gen_row(self, components: Components) -> None:
         # Sketchy
         # Next add .tr key=val key=val key=val \n .td key=val key=val key=val data_string
@@ -298,10 +340,9 @@ class HROFFFile():
 
     # UNTESTED ****
     def gen_one_or_many(self, components: Components) -> None:
-        components.parse_subterms()
         olist = [ ]
+        olist.append(components.withopts)
         for each in components.fields:
-            olist.append(components.withopts)
             olist.append(each)
         olist.append(components.end)
         self.append(olist)
@@ -339,21 +380,8 @@ class HROFFFile():
 
     # def _gen_with_subfields(self, outer_nm: AnyStr, inner_nm: AnyStr, components: Components) -> None:
     def _gen_select(self, components: Components) -> None:
-        components.parse_subterms()
-        olist = [ ]
-        subterms = components['subterms']
-        # pprint(subterms) ; sys.exit(1)
-        children = subterms['children']
-        opts = subterms['opts'] # nm = components.name; sub_nm (from call params);
-        olist.append(components.withopts)
-        for child in children:
-            child_opts = child['opts']
-            label = child['args']
-            s = f'<option value="{child_opts}">{label}</option>' # <{sub_nm}...>{label != None}</{sub_nm}>
-            olist.append(s)
-        olist.append(components.end)
-        self.append(olist)
-        return
+        s = components.render
+        return self.append(s)
 
     def _gen_simple(self, components: Components) -> None:
         nm, options, argString = components.name, " ".join(components.options), " ".join(components.optionless)
@@ -370,14 +398,58 @@ class HROFFFile():
         self.append(ostr)
         return
 
-    def _gl(self, components: Components) -> None:
-        self._gen_simple_wrap(components)
-        return
+    if False:
+        def _gl(self, components: Components) -> None:
+            self._gen_simple_wrap(components)
+            return
 
     def _gen_simple_wrap(self, components: Components) -> None:
         components.parse_subterms()
         ostr = f"{components.withopts}{components.argString}{components.end}"
         self.append(ostr)
+
+    def _gen_pp(self, outer_tag, inner_tag, components):
+        base_opts = components['subterms']['base']
+        olist = [ f'<{outer_tag}>' ]
+        s = f'<{inner_tag} {base_opts}>' if base_opts else f"<{inner_tag}>"
+        olist.append(s)
+        children = components['subterms']['children']
+        children = [ child['base'] for child in children ]
+        olist += children
+        olist.append(f"</{inner_tag}></td>")
+        ostr = "".join(olist)
+        pprint(components) ; print(ostr) ; sys.exit(1)
+        return self.append(ostr)
+
+    def _gen_td_select(self, components: Components) -> None:
+        # selector = self._gen_pp("select", "option", components)
+        selector = components.render
+        self.append(selector)
+
+    def _gen_td_label(self, components: Components) -> None:
+        label = components.render
+        self.append(label)
+        return
+        
+        # return self._gen_pp("td", "label", components)
+        base_opts = components['subterms']['base']
+        olist = [ '<td>' ]
+        s = f'<label {base_opts}>' if base_opts else "<label>"
+        olist.append(s)
+        children = components['subterms']['children']
+        children = [ child['base'] for child in children ]
+        olist.append(" ".join(children)) # this CANNOT be right...
+        olist.append("</label></td>")
+        ostr = "".join(olist)
+        # pprint(components) ; print(ostr) ; sys.exit(1)
+        self.append(ostr)
+        return
+
+    if False:
+        def _gen_textarea(self, components: Components) -> None:
+            textarea = components.render
+            self.append(textarea)
+            return
 
     def _gen_title(self, components: Components) -> None:
         self._header['title'] = components.argString
@@ -392,10 +464,11 @@ class HROFFFile():
         return ibuf
 
     def run(self) -> None:
-        test_string = "" # '.select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3'
+        test_string = "" # '.select name="select_name" id="select_id" :: Option_1 // Option Two // Option_3'
         if test_string:
             components = Components(test_string)
             components['type'] = 'test'
+            pprint(components)
             print(components.render)
             sys.exit(1)
         for ln in self._ibuf:
@@ -420,6 +493,9 @@ class HROFFFile():
 
     def _start_segment(self, components: Components) -> None:
         name = components.get('name', None)
+        if name in Components.CAN_RENDER_START:
+            self.append(components.render)
+            return
         if name in HROFFFile.SIMPLE:
             self._gen_simple(components)
             return
