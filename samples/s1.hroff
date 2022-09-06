@@ -4,7 +4,9 @@
 .css s1.css
 .p Intro Paragraph
 ..p -- causes premature exit
-.h1 Pre-Table Header
+.h2 Links
+.link http://prang.pretensyon.com Prang
+.h2 Pre-Table Header
 .table width="25%" border=1
 .caption Simple table
 .tr
@@ -40,5 +42,13 @@ Does this seem random enough to you?
 .br
 .label for="brands" :: Brand Name
 
-.select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3
-
+.div
+.select name="select_name" id="select_id" :: value="o1" :: Option_1 // value="o2" :: Option Two // value="o3" :: Option_3 // o4
+..div
+.br
+.div
+.select name="test_name" id="test_id" :: Red // Blue // Green
+..div
+.br
+.img width="15%" height="15%" src="http://prang.pretensyon.com/images/HMG_FSC_Diagram.jpg"
+.image width="15%" height="15%" :: http://prang.pretensyon.com/images/kang.jpg
