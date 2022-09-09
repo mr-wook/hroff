@@ -1,0 +1,42 @@
+.title Frag Out!
+.css table_borders.css
+.h2 Table Within Table, Fragments, and Includes!
+.h3 Outer Table
+.div
+.table
+.caption Tables-In-Table
+.tr
+.th Vehicle // Views 
+..tr
+.tr
+.td
+!include s2_vehicle_table.hroff
+..td
+.td
+!include s2_view_table.hroff
+..td
+..table
+..div
+
+.div
+.table
+.tr
+.th Interior Pallette // Exterior Palette
+..tr
+.tr
+.td
+!include s2_intcolors.hroff
+..td
+.td
+!include s2_extcolors.hroff
+..td
+..tr
+..table
+..div
+
+.div
+# .label Producers doesn't work;
+.h3 People
+.br
+.textarea rows="4" cols="80" :: fred@digital-giant.com, bob@digital-giant.com
+..div

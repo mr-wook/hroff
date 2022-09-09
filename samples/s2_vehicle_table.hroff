@@ -1,0 +1,22 @@
+.table
+.tr
+.tdlabel for="brands" :: Brand Name
+.tdselect name="brands" id="brands" :: HME // HMA // Genesis // Sonata // Subaru // Ford // Tesla
+..tr
+.tr
+.tdlabel for="models_lbl" id="models_id" :: Model Name
+.tdselect name="models" id="models" :: Santa Fe // Palisade // Fiery Death 
+..tr
+.tr
+.tdlabel for="years_for" id="years_id" :: Model Year
+.tdselect name="syears" id="syears" :: 2023 // 2022 // 2021 
+..tr
+.tr
+.tdlabel value="live" id="live" :: Live Starting Version
+.tdselect name="live" id="live" :: 1.2 // 1.1 // value="1.0" :: 1
+..tr
+.tr
+.tdlabel for="preview" id="preview" :: Preview Starting Version
+.tdselect name="preview" id="preview" :: 1.2 // 1.1 // value="1.0" :: 1
+..tr
+..table
