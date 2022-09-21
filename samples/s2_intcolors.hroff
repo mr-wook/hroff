@@ -1,51 +1,47 @@
 .table
 .tr
-.tdlabel for="color01" :: Color Name
+.th Code // Name // Value //  Swatch
+..tr
+.tr
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color01" :: Color Value
-.tdinput value="#0000ff" type="text" :: 
+.tdinput value="#0000ff" size="7" type="text" :: 
 .tdinput value="#0000ff" type="color" ::
 ..tr
 .tr
-.tdlabel for="color02" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color02" :: Color Value
-.tdinput value="#ff00ff" type="text" :: 
+.tdinput value="#ff00ff" size="7" type="text" :: 
 .tdinput value="#ff00ff" type="color" ::
 ..tr
 .tr
-.tdlabel for="color03" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color03" :: Color Value
-.tdinput value="#00ffff" type="text" :: 
+.tdinput value="#00ffff" size="7" type="text" :: 
 .tdinput value="#00ffff" type="color" ::
 ..tr
 .tr
-.tdlabel for="color04" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color04" :: Color Value
-.tdinput value="#ffff00" type="text" :: 
+.tdinput value="#ffff00" size="7" type="text" :: 
 .tdinput value="#ffff00" type="color" ::
 ..tr
 .tr
-.tdlabel for="color05" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color05" :: Color Value
-.tdinput value="#0f0f0f" type="text" :: 
+.tdinput value="#0f0f0f" size="7" type="text" :: 
 .tdinput value="#0f0f0f" type="color" ::
 ..tr
 .tr
-.tdlabel for="color06" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color06" :: Color Value
-.tdinput value="#110099" type="text" :: 
+.tdinput value="#110099" size="7" type="text" :: 
 .tdinput value="#110099" type="color" ::
 ..tr
 .tr
-.tdlabel for="color07" :: Color Name
+.tdinput type="text" size="4" ::
 .tdinput type="text" ::
-.tdlabel for="color07" :: Color Value
-.tdinput value="#a0b023" type="text" :: 
+.tdinput value="#a0b023" size="7" type="text" :: 
 .tdinput value="#a0b023" type="color" ::
 ..tr
 ..table
