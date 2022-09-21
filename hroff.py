@@ -10,15 +10,17 @@ if True:
     from   pprint import pprint
     import re
     import sys
-    from   typing import AnyStr, Dict, List
+    from   typing import AnyStr, Dict, List, NoReturn
 
 
 class Components(dict):
     CAN_RENDER = [ 'directive', 'end', 'hroff comment', 'html comment', 'test-start', 'text' ]
     # These should probably be dispatch dicts;
-    CAN_RENDER_START = [ 'label', 'input', 'rowslabelcheckbox', 'select', 'table', 'tdinput',
-                         'tdlabel', 'tdselect', 'textarea' ]
+    CAN_RENDER_START = [ 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                         'label', 'input', 'rowslabelcheckbox', 'select',
+                         'table', 'tdcheckbox', 'tdinput', 'tdlabel', 'tdselect', 'textarea', 'tr' ]
     CAN_RENDER_ENCAPSULATED = [ 'div', 'td', 'th', 'tr' ]
+    COMPLETE = [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'label', 'textarea' ]
     EXTENDED_RENDER = dict(select='option', tdselect='option')
     PREFACES = [ ';', '.', '#', '!', ',', '@' ]
     PARENT_PARTS = re.compile(r'\s*::\s*')
@@ -26,7 +28,7 @@ class Components(dict):
     UNTYPE = re.compile(r'^(\.[\w+\.]+)\s+(.*)')
     WORDS = re.compile(r'\s+')
 
-    def __init__(self, ln: str, **kwa: dict) -> None:
+    def __init__(self, ln: str, **kwa: dict) -> NoReturn:
         self['line'] = ln
         self['type'] = 'text'
         self.parse(ln)
@@ -35,7 +37,7 @@ class Components(dict):
     def atomize(ln: str):
         return WORDS.split(ln)
 
-    def parse(self, ln: AnyStr, **kwa: dict) -> None:
+    def parse(self, ln: AnyStr, **kwa: dict) -> NoReturn:
         """Parse an hroff input line into it's critical components"""
         if not ln:
             # self.parse_subterms() # Shouldn't need this call for null lines;
@@ -84,7 +86,7 @@ class Components(dict):
             self['args'] = [ ln[1:] ]
         return
 
-    def parse_subterms(self) -> None:
+    def parse_subterms(self) -> NoReturn:
         args = self.args
         self['subterms'] = dict(base=args, opts="", children=[])
 
@@ -133,7 +135,9 @@ class Components(dict):
             for field in fields:
                 olist.append(f"<{nm}>{field}</{nm}>")
             return olist
-        return f"<{nm}>{argString}</{nm}>"
+        if not argString:
+            return f"{self.withopts}"
+        return f"{self.withopts}{argString}{self.end}"
 
     def render_nested(self, outer_tag: AnyStr) -> List:
         if outer_tag not in Components.EXTENDED_RENDER:
@@ -168,12 +172,20 @@ class Components(dict):
         return self.get('atoms', None)
 
     @property
+    def complete(self):
+        if self.argString:
+            return f"{self.withopts}{self.argString}{self.end}"
+        else:
+            return f"{self.withopts}"
+    
+    @property
     def end(self):
         return f"</{self.name}>"
     
     @property
     def fields(self) -> List:
-        return self.get('fields', None)
+        # The ambiguity introduced below (evil hack!) needs to be resolved;
+        return self.get('fields', self.get('args', None)) # Wonder what this will screw up?
 
     @property
     def line(self) -> AnyStr:
@@ -217,6 +229,8 @@ class Components(dict):
             if nm not in Components.CAN_RENDER_START:
                 return f'<!-- not in CAN_RENDER_START: {repr(self)} -->'
             # if nm in [ 'table', ... ]: return self.withopts
+            if nm in Components.COMPLETE:
+                return self.complete
             if nm == 'input':
                 s = f"{self.withopts}"
                 return s
@@ -225,6 +239,13 @@ class Components(dict):
                 return "\n".join(olist)
             if nm == 'table':
                 return f'{self.withopts}'
+            if nm == 'tdcheckbox':
+                opts = self['subterms'].get('opts', "")
+                if opts:
+                    s = f'<td {opts}><input type="checkbox"></td>'
+                else:
+                    s = '<td><input type="checkbox"></td>'
+                return s                
             if nm == 'tdinput':
                 self['name'] = 'input'
                 s = f"<td>{self.withopts}</td>"
@@ -235,11 +256,7 @@ class Components(dict):
                 return s
             if nm == 'tdlabel':
                 self['name'] = 'label'
-                s = f"<td>{self.withopts}{self.argString}{self.end}</td>"
-                return s
-            if nm == 'textarea':
-                # <textarea id="w3review" name="w3review" rows="4" cols="50">At w3schools.com you will learn how to make a website. They offer free tutorials in all web development technologies.</textarea>
-                s = f'{self.withopts}{self.argString}{self.end}'
+                s = f"<td>{self.complete}</td>"
                 return s
             if nm == 'rowslabelcheckbox':
                 return self._render_rowslabelcheckbox()
@@ -254,9 +271,13 @@ class Components(dict):
         return f"<!-- unsuppored type {type_} -->"
 
     @property
-    def renderable(self):
-        renderable = (self.type == 'start') and ((self.name in Components.CAN_RENDER_START))
-        renderable |= (self.type == 'end')
+    def renderable(self) -> bool:
+        nm, type_ = self.name, self.type
+        renderable = (type_ == 'start') and (nm in Components.CAN_RENDER_START)
+        renderable |= (type_ == 'start') and (nm in Components.CAN_RENDER_ENCAPSULATED)
+        renderable |= (type_ == 'end')
+        renderable |= (type_ == 'text')
+        renderable |= (type_ == 'html comment')
         return renderable
 
     @property
@@ -340,14 +361,15 @@ class Include(Fragment):
 class HROFFFile():
     SIMPLE = [ 'table', 'br', 'p', 'div' ]
     SIMPLE_WRAP = [ 'caption', 'h1', 'h2', 'h3', 'h4', 'h5' ]
-    def __init__(self, fn: str, **kwa: dict) -> None:
+    def __init__(self, fn: str, **kwa: dict) -> NoReturn:
         self._fn = fn
         if not os.path.isfile(fn):
             raise RuntimeError(f"No such file {fn}")
         self._parent_dir, self._fn_only = os.path.split(fn)
         HROFFFile.GEN_HANDLERS = dict(title=self._gen_title, css=self._gen_css, 
                                       image=self._gen_image, img=self._gen_img, link=self._gen_link,
-                                      tr=self._gen_row, td=self._gen_row_data, th=self._gen_row_header)
+                                      tr=self._gen_row, td=self._gen_row_data, tdnull=self._gen_td_null, 
+                                      th=self._gen_row_header)
         self._header = OrderedDict(title=None, css=[], js=[]) # DO NOT REORDER!
         self._wrapper = [ "<!doctype html>", "</html>" ]
         self._body = [ ]
@@ -363,10 +385,10 @@ class HROFFFile():
     def __len__(self):
         return len(self._html)
 
-    def _add_comment(self, comment: str) -> None:
+    def _add_comment(self, comment: str) -> NoReturn:
         self.append(f"<!-- {comment} -->")
 
-    def append(self, s) -> None: # s: AnyStr | s: List ?
+    def append(self, s) -> NoReturn: # s: AnyStr | s: List ?
         if type(s) == type(""):
             self._body.append(s)
         elif type(s) == type([ ]):
@@ -378,7 +400,7 @@ class HROFFFile():
         else:
             raise TypeError(f"Type of {type(s)} not supported for append")
 
-    def append_indented(s: str) -> None:
+    def append_indented(s: str) -> NoReturn:
         self._body.append(f"{' ' * self._indent}{s}")
 
     def _assemble(self) -> List:
@@ -398,7 +420,7 @@ class HROFFFile():
         html.append(self._wrapper[-1])
         return html
 
-    def _end_simple(self, components: dict) -> None:
+    def _end_simple(self, components: dict) -> NoReturn:
         self.append(components.start)
 
     def _expand_header(self, k: AnyStr, hdr_dict: Dict) -> AnyStr:
@@ -413,31 +435,31 @@ class HROFFFile():
                 return output_css[:-1]  # Lose last newline;
         return f"<!-- unknown header {k} value {hdr_dict[k]} -->"
 
-    def extend_last(self, s: str) -> None:
+    def extend_last(self, s: str) -> NoReturn:
         self._body[-1] += s
 
-    def _gen_css(self, components: Components) -> None:
+    def _gen_css(self, components: Components) -> NoReturn:
         css_entry = components.argString
         self._header['css'].append(css_entry)
 
-    def _gen_image(self, components: Components) -> None:
+    def _gen_image(self, components: Components) -> NoReturn:
         # Generate an image link from: .link <url>, as opposed to <img param=v param=v...> which would be .img
         url = components.args[-1]
         preopts = components['subterms'].get('opts', "")
         self.append(f'<img {preopts} src="{url}"/>')
 
-    def _gen_img(self, components: Components) -> None:
+    def _gen_img(self, components: Components) -> NoReturn:
         components.parse_subterms()
         html = f'<img {" ".join(components.options)}/>'
         self.append(html)
 
-    def _gen_link(self, components: Components) -> None:
+    def _gen_link(self, components: Components) -> NoReturn:
         url, *text = components.args # url, text
         text = " ".join(text)
         ostr = f'<a href="{url}">{text}</a>'
         self.append(ostr)
 
-    def _gen_row(self, components: Components) -> None:
+    def _gen_row(self, components: Components) -> NoReturn:
         # Sketchy
         # Next add .tr key=val key=val key=val \n .td key=val key=val key=val data_string
         olist = [ components.start ]
@@ -452,7 +474,7 @@ class HROFFFile():
         return
 
     # UNTESTED ****
-    def gen_one_or_many(self, components: Components) -> None:
+    def gen_one_or_many(self, components: Components) -> NoReturn:
         olist = [ ]
         olist.append(components.withopts)
         for each in components.fields:
@@ -461,7 +483,7 @@ class HROFFFile():
         self.append(olist)
         return
 
-    def gen_row_header(self, components: Components) -> None:
+    def gen_row_header(self, components: Components) -> NoReturn:
         olist = []
         argString = components.argString
         header_fields = components.fields
@@ -476,31 +498,32 @@ class HROFFFile():
         self.append(olist)
         return
 
-    # Deprecated, handled by components.render; remove, re-test;
-    def _gen_encapsulated_entry(self, components: Components) -> None:
-        # parse subterms;
-        self.append(components.render)
-        return
-        # Deprecate:
-        nm, argString, fields = components.name, components.argString, components.fields
-        if not fields:
-            self.append(components.withopts)
+    if False:
+        # Deprecated, handled by components.render; remove, re-test;
+        def _gen_encapsulated_entry(self, components: Components) -> NoReturn:
+            # parse subterms;
+            self.append(components.render)
             return
-        if '//' in argString:
-            for field in fields:
-                self.append(f"<{nm}>{field}</{nm}>")
-            return
-        self.append(f"<{nm}>{argString}</{nm}>")
+            # Deprecate:
+            nm, argString, fields = components.name, components.argString, components.fields
+            if not fields:
+                self.append(components.withopts)
+                return
+            if '//' in argString:
+                for field in fields:
+                    self.append(f"<{nm}>{field}</{nm}>")
+                return
+            self.append(f"<{nm}>{argString}</{nm}>")
 
     # Remove once render encapsulations are in play
-    def _gen_row_data(self, components: Components) -> None:
+    def _gen_row_data(self, components: Components) -> NoReturn:
         self._gen_encapsulated_entry(components)
 
     # Remove once render encapsulations are in play
-    def _gen_row_header(self, components: Components) -> None:
+    def _gen_row_header(self, components: Components) -> NoReturn:
         self._gen_encapsulated_entry(components)
 
-    def _gen_simple(self, components: Components) -> None:
+    def _gen_simple(self, components: Components) -> NoReturn:
         nm, options, argString = components.name, " ".join(components.options), " ".join(components.optionless)
         if options:
             if argString:
@@ -515,7 +538,7 @@ class HROFFFile():
         self.append(ostr)
         return
 
-    def _gen_simple_wrap(self, components: Components) -> None:
+    def _gen_simple_wrap(self, components: Components) -> NoReturn:
         components.parse_subterms()
         ostr = f"{components.withopts}{components.argString}{components.end}"
         self.append(ostr)
@@ -534,17 +557,20 @@ class HROFFFile():
             pprint(components) ; print(ostr) ; sys.exit(1)
             return self.append(ostr)
 
-    def _gen_td_select(self, components: Components) -> None:
+    def _gen_td_select(self, components: Components) -> NoReturn:
         # selector = self._gen_pp("select", "option", components)
         selector = components.render
         self.append(selector)
 
-    def _gen_td_label(self, components: Components) -> None:
+    def _gen_td_label(self, components: Components) -> NoReturn:
         label = components.render
         self.append(label)
         return
 
-    def _gen_title(self, components: Components) -> None:
+    def _gen_td_null(self, components: Components) -> NoReturn:
+        self.append("<td>&nbsp;</td>")
+
+    def _gen_title(self, components: Components) -> NoReturn:
         self._header['title'] = components.argString
 
     def _load(self, fn: str) -> str:
@@ -566,7 +592,7 @@ class HROFFFile():
             return False, f"No such {directive} file {fn}"
         return True, fn
 
-    def process_directives(self, ln: str) -> None:
+    def process_directives(self, ln: str) -> NoReturn:
         fields = Components.WORDS.split(ln)
         directive = fields[0][1:]
         if directive == 'fragment':     # Non-expanding include
@@ -586,10 +612,19 @@ class HROFFFile():
             include_buf = include.render
             self.append(include_buf)
             return
+        elif directive == 'exit':
+            if not fields:
+                self.save()
+            else:
+                parent = self._parent_dir if self._parent_dir else "."
+                fp = f"{parent}/{self._fn_only.replace('.hroff', '.html')}"
+                self.save(fp)
+            print("Exit on Directive")
+            sys.exit(0)
 
         return self.warning(f"Unknown directive {directive}")
 
-    def run(self) -> None:
+    def run(self) -> NoReturn:
         test_string = "" # ".rowslabelcheckbox Front 3/4 Driver Wheel Turn // Front 3/4 Passenger Wheel Turn // Front 3/4 Driver Wheel Turn DRLs On // Front 3/4 Passenger Wheel Turn DRLs On // Profile Passenger // Studio 360 // City Bridge Environment 360 // City Bridge Interior Pano // Showroom Environment Interior Pano" # '.select name="select_name" id="select_id" :: Option_1 // Option Two // Option_3'
         if test_string:
             components = Components(test_string)
@@ -610,7 +645,7 @@ class HROFFFile():
                 self._start_segment(components)
                 continue
 
-    def save(self, fn = None) -> None:
+    def save(self, fn = None) -> NoReturn:
         if not fn:
             prefix, ext = os.path.splitext(self._fn)
             fn = f"{prefix}.html"
@@ -620,7 +655,7 @@ class HROFFFile():
         ofd.write(ostr)
         rc = ofd.close()
 
-    def _start_segment(self, components: Components) -> None:
+    def _start_segment(self, components: Components) -> NoReturn:
         name = components.get('name', None)
         if name in Components.CAN_RENDER_START:
             self.append(components.render)
@@ -637,7 +672,7 @@ class HROFFFile():
         HROFFFile.GEN_HANDLERS[name](components)
         return
 
-    def warning(self, s: str) -> None:
+    def warning(self, s: str) -> NoReturn:
         self.append(f"<!-- WARNING: {s} -->")
         return
 
