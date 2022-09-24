@@ -7,8 +7,9 @@ I (meaning me) need to quickly generate HTML mockups/wireframes/etc. and don't w
 
 hroff takes an exceedingly simple runoff (troff, etc.) style input and outputs HTML, ie:
 ~~~
-; <comment>
+; <comment> -- Doesn't appear in html
 !<hroff-directive> <args> -- include <file>, css <file> [inline], js <file> [inline]
+@<varname> [expression]
 .<section type> <string> -- start a section, ie: <p>, <div>, etc.;
 ..<section type> -- end a section, ie: </p>, </div>
 #<emitted html comment> <text>
